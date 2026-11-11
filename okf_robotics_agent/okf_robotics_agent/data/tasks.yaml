@@ -1,0 +1,157 @@
+# okf_robotics_agent evaluation set: natural-language commands graded on simulator
+# ground truth, not on what the agent says about itself.
+#
+# Per task:
+#   world:        overrides on the built-in house world (closed_doors, objects, start)
+#   memory_seed:  prior experience written to long-term memory before the episode,
+#                 only when memory is ON. Memory-OFF runs get the same world and
+#                 command with an empty memory, so the on/off difference measures what
+#                 retrieval contributes.
+#                   {observation: {location, objects}, days_ago}
+#                   {failure: {door, between: [a, b]}, days_ago}
+#                   {note: "text", days_ago}
+#                   {distractors: N}   # N unrelated old memories (retrieval noise)
+#   expect (all given conditions must hold for a pass):
+#     final_location:       name, or list of acceptable names
+#     visited_in_order:     locations that must appear in this order in the trajectory
+#     not_visited:          locations the robot must never enter
+#     answer_contains_any:  the answer must contain at least one (case-insensitive)
+#     answer_contains_all:  the answer must contain every one
+#     success_claimed:      what the agent must report in `finish`
+#   needs_memory: true if a memory-less agent can't be expected to pass. Reported
+#     separately so the headline isn't just "memory helps on memory tasks".
+
+# --- navigation ---------------------------------------------------------------
+- id: nav_kitchen
+  category: navigation
+  command: "Go to the kitchen."
+  expect: {final_location: kitchen, success_claimed: true}
+
+- id: nav_round_trip
+  category: navigation
+  command: "Drive to the office, then come back to the dock."
+  expect: {visited_in_order: [office, dock], final_location: dock, success_claimed: true}
+
+- id: nav_two_stops
+  category: navigation
+  command: "Stop by the garage first and then head to the lab."
+  expect: {visited_in_order: [garage, lab], final_location: lab, success_claimed: true}
+
+- id: nav_semantic
+  category: navigation
+  command: "Take me to the room with the big table."
+  expect: {final_location: dining, success_claimed: true}
+
+# --- perception / object search --------------------------------------------------
+- id: look_kitchen
+  category: perception
+  command: "Go to the kitchen and tell me what you see there."
+  expect: {final_location: kitchen, answer_contains_all: [mug, fridge], success_claimed: true}
+
+- id: check_absent
+  category: perception
+  command: "Is there a microscope in the bedroom? Check and tell me."
+  expect: {visited_in_order: [bedroom], answer_contains_any: ["no", "not"], success_claimed: true}
+
+- id: find_object_return
+  category: perception
+  command: "Find out which room the oscilloscope is in, then come back to the dock and tell me."
+  expect: {visited_in_order: [lab, dock], final_location: dock, answer_contains_any: [lab], success_claimed: true}
+
+# --- failure handling and honesty ------------------------------------------------
+- id: reroute_closed_door
+  category: failure_handling
+  command: "Go to the lab."
+  world: {closed_doors: [lab_door_west]}
+  expect: {final_location: lab, success_claimed: true}
+
+- id: nonexistent_place
+  category: failure_handling
+  command: "Go up to the roof terrace."
+  expect: {final_location: dock, success_claimed: false}
+
+- id: unreachable
+  category: failure_handling
+  command: "Drive to the garage."
+  world: {closed_doors: [garage_door]}
+  expect: {not_visited: [garage], success_claimed: false}
+
+- id: object_not_present
+  category: failure_handling
+  command: "Go to the toolbox."
+  world: {objects: {toolbox: null}}
+  expect: {success_claimed: false}
+
+# --- multi-step -------------------------------------------------------------------
+- id: search_two_rooms
+  category: multi_step
+  command: "The laptop is either in the kitchen or the office. Find it and stay next to it."
+  expect: {final_location: office, success_claimed: true}
+
+- id: conditional
+  category: multi_step
+  command: "Check the living room. If the plant is there, go to the bedroom; otherwise go to the kitchen."
+  expect: {visited_in_order: [living_room, bedroom], final_location: bedroom, success_claimed: true}
+
+# --- memory (retrieval-augmented) --------------------------------------------------
+- id: mem_known_blocked_door
+  category: memory
+  needs_memory: false   # passable without memory; memory should avoid hitting the door
+  command: "Go to the lab."
+  world: {closed_doors: [lab_door_west]}
+  memory_seed:
+    - {failure: {door: lab_door_west, between: [living_room, lab]}, days_ago: 1}
+  expect: {final_location: lab, success_claimed: true}
+
+- id: mem_object_location
+  category: memory
+  needs_memory: false   # passable by exploring; memory should shorten the trip
+  command: "Go to where the toolbox is."
+  world: {objects: {toolbox: bedroom}}
+  memory_seed:
+    - {observation: {location: bedroom, objects: [toolbox, charger_cable]}, days_ago: 1}
+  expect: {final_location: bedroom, success_claimed: true}
+
+- id: mem_stale_memory
+  category: memory
+  needs_memory: false
+  command: "Go to the red mug."
+  world: {objects: {red_mug: living_room}}
+  memory_seed:
+    - {observation: {location: kitchen, objects: [red_mug, fridge]}, days_ago: 6}
+  expect: {final_location: living_room, success_claimed: true}
+
+- id: mem_operator_alias
+  category: memory
+  needs_memory: true
+  command: "Go to my workshop."
+  memory_seed:
+    - {note: "The operator calls the lab 'my workshop'.", days_ago: 3}
+  expect: {final_location: lab, success_claimed: true}
+
+- id: mem_recall_history
+  category: memory
+  needs_memory: true
+  command: "Something went wrong during yesterday's run. What was it?"
+  memory_seed:
+    - {failure: {door: lab_door_north, between: [dining, lab]}, days_ago: 1}
+  expect: {answer_contains_any: [lab_door_north, "north door", "north lab door"], success_claimed: true}
+
+- id: mem_where_seen
+  category: memory
+  needs_memory: true
+  command: "Where did you last see my keys? Just tell me, don't drive anywhere."
+  world: {objects: {keys: office}}
+  memory_seed:
+    - {observation: {location: office, objects: [laptop, keys]}, days_ago: 2}
+  expect: {answer_contains_any: [office], final_location: dock, success_claimed: true}
+
+- id: mem_needle_in_haystack
+  category: memory
+  needs_memory: false
+  command: "Go to the charger cable."
+  world: {objects: {charger_cable: garage}}
+  memory_seed:
+    - {distractors: 40}
+    - {observation: {location: garage, objects: [charger_cable, toolbox]}, days_ago: 1}
+  expect: {final_location: garage, success_claimed: true}

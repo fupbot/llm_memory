@@ -77,3 +77,6 @@ __pycache__/
 # colcon workspace artifacts
 install/
 log/
+
+# okf_robotics_agent eval output
+eval_results/

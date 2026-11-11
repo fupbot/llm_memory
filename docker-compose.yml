@@ -50,7 +50,33 @@ services:
       - lyrical_install:/workspace/install
       - lyrical_log:/workspace/log
 
+  # Jazzy + Gazebo Harmonic + Nav2 TurtleBot3 simulation, for okf_robotics_agent:
+  #   docker compose run --rm jazzy-sim
+  #   colcon build && source install/setup.bash
+  #   ros2 launch okf_robotics_agent agent_sim.launch.py
+  # Not yet run end to end: see requirements.md's LLM agent section.
+  jazzy-sim:
+    <<: *service_template
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+        WITH_SIM: "true"
+    environment:
+      - ANTHROPIC_API_KEY
+    volumes:
+      - .:/workspace/src/robot_ai_memory
+      - jazzy_sim_build:/workspace/build
+      - jazzy_sim_install:/workspace/install
+      - jazzy_sim_log:/workspace/log
+      - okf_bundle:/root/okf_robotics_bundle
+
 volumes:
+  jazzy_sim_build:
+  jazzy_sim_install:
+  jazzy_sim_log:
+  okf_bundle:
   humble_build:
   humble_install:
   humble_log:

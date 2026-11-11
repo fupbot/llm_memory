@@ -1,5 +1,6 @@
-"""Abstract search interface so `okf_robotics_core` can swap backends (grep for v1,
-FTS5/SQLite later) without changing callers — see requirements.md's Search section."""
+"""Abstract search interface so `okf_robotics_core` can swap backends (grep for exact
+text, vector/semantic search for RAG) without changing callers — see requirements.md's
+Search section."""
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
@@ -12,6 +13,9 @@ class SearchResult:
     path: Path
     line_number: int
     snippet: str
+    # Similarity in [0, 1] for ranked backends (vector search); None for exact-match
+    # backends like grep, which have no meaningful ranking.
+    score: float | None = None
 
 
 class SearchBackend(ABC):

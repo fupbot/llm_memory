@@ -1,0 +1,33 @@
+# Named locations for Nav2's TurtleBot3 simulation world (nav2_bringup
+# tb3_simulation_launch.py: Gazebo Harmonic on Jazzy/Lyrical, Gazebo Classic on
+# Humble). It's a hexagonal arena with a 3x3 grid of pillars at x, y in {-1.1, 0, 1.1};
+# the robot spawns at (-2.0, -0.5).
+#
+# Not yet driven in Gazebo: these poses are chosen to sit between pillars, but
+# check them in RViz (Publish Point) before relying on them, and adjust as needed.
+environment_resource: map://tb3_sandbox
+frame_id: map
+pose_topic: amcl_pose
+navigate_action: navigate_to_pose
+through_action: navigate_through_poses
+arrival_tolerance: 0.6
+perception_radius: 1.0
+nav_timeout_s: 180.0
+
+locations:
+  start:      {x: -2.0, y: -0.5,  yaw: 0.0,   description: "Spawn point on the west side"}
+  west_bay:   {x: -1.7, y: 0.55,  yaw: 0.0,   description: "West side, between the left pillar column and the wall"}
+  north_bay:  {x: 0.55, y: 1.75,  yaw: 1.57,  description: "North side of the arena"}
+  east_bay:   {x: 1.75, y: -0.55, yaw: 0.0,   description: "East side of the arena"}
+  south_bay:  {x: -0.55, y: -1.75, yaw: -1.57, description: "South side of the arena"}
+  center_ne:  {x: 0.55, y: 0.55,  yaw: 0.78,  description: "Gap between the four north-east pillars"}
+  center_sw:  {x: -0.55, y: -0.55, yaw: -2.35, description: "Gap between the four south-west pillars"}
+
+# Simulated perception (see robot/nav2.py): virtual objects at map positions, "seen"
+# within perception_radius. Stand-in for an object detector so the full agent +
+# memory loop runs in Gazebo.
+objects:
+  red_cone:     {x: 0.5, y: 1.9}
+  toolbox:      {x: 1.9, y: -0.5}
+  blue_crate:   {x: -0.6, y: -1.9}
+  charging_pad: {x: -2.0, y: -0.6}

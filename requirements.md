@@ -67,6 +67,8 @@ portable/interoperable implementation for robotics.
   - NOT for querying — the querying planner's own LLM does the reasoning; the MCP
     server just serves structured data.
 - Split: capture/encode deterministically, let the querying LLM reason.
+- The one package that calls an LLM is `okf_robotics_agent` (see LLM agent section),
+  an opt-in fourth package. Core, capture and MCP still need no API key.
 
 ## Safety & real-time behavior
 
@@ -146,9 +148,10 @@ Release to each distro's rosdistro index via `bloom-release` once registered on 
 ROS package index (Phase 3) — that's the actual distribution mechanism, separate from
 CI.
 
-## Search (v1)
+## Search
 
-- **Grep/ripgrep-based**, not SQLite/FTS5, for v1.
+- **Grep/ripgrep-based** stays the zero-dependency default (`GrepSearchBackend`, used
+  by the MCP server), not SQLite/FTS5.
 - Rationale: zero extra dependencies, fully portable, matches the "plain markdown,
   readable by `cat`" philosophy; expected event volume (event-boundary writes only) is
   low enough that grep-based search should be sufficient.
@@ -156,6 +159,19 @@ CI.
   optional accelerator if/when volume or query patterns demand it — keep the search
   interface in `okf_robotics_core` abstracted so the backend can be swapped without
   changing callers.
+- **Added 2026-11-11: vector (semantic) search** — `VectorSearchBackend`, behind the
+  same interface, for the agent's retrieval-augmented memory (RAG). Revises the
+  original "grep only" decision because the agent's queries are natural language
+  ("go to my workshop", "where did you see my keys") that rarely share exact words
+  with what was written. Design rules that keep it consistent with the OKF
+  philosophy:
+  - The OKF bundle remains the **only source of truth**. The vector index is a
+    derived cache kept outside the bundle (default `<bundle>.index/`), re-indexed
+    incrementally by content hash. Deleting it loses nothing.
+  - Optional dependencies, imported lazily: Chroma (`chromadb`) as the vector DB, and
+    all-MiniLM-L6-v2 embeddings via Chroma's bundled ONNX runtime (local, no API
+    key). `okf_robotics_core` itself still needs only PyYAML: a pure-Python
+    in-memory store and a hashing embedder exist for tests/offline use.
 
 ## Package architecture (planned)
 
@@ -168,6 +184,10 @@ CI.
 3. **`okf_robotics_mcp`** (Python, MCP server) — exposes query/search over the OKF
    bundle so an LLM-based planner can ask "what happened last time in this
    environment."
+4. **`okf_robotics_agent`** (Python; ROS node optional) — added 2026-11-11. An LLM
+   agent (Claude) that takes natural-language commands, drives the robot through Nav2,
+   and uses the bundle as retrieval-augmented long-term memory. Ships a built-in
+   simulator and an evaluation set. See the LLM agent section.
 
 ### Workspace layout
 
@@ -181,6 +201,7 @@ robot_ai_memory/
   okf_robotics_core/
   okf_robotics_capture/
   okf_robotics_mcp/
+  okf_robotics_agent/
   requirements.md
   README.md
   LICENSE
@@ -369,6 +390,63 @@ cross-links. This is a spec requirement, not a style choice.
 - Sim-first, but capture-node design (see Safety) should not preclude later running the
   same package against a real Turtlebot or similar platform.
 
+## LLM agent (`okf_robotics_agent`)
+
+Added 2026-11-11. This is the demo scenario made concrete: an LLM controls a ROS 2
+robot from natural-language commands, its memory is the OKF bundle retrieved through a
+vector index (RAG), and a fixed evaluation set measures how often it completes tasks
+correctly, with memory ON vs OFF.
+
+**Architecture** (each piece behind an interface, so the pieces can be swapped and
+tested on their own):
+
+- `RobotInterface`: `navigate_to(location, via, avoid_doors)`, `look()`, `state()`.
+  Coarse, named-place actions: the LLM plans and Nav2 (or the simulator) does motion
+  control, so model latency never sits inside a control loop (see Safety).
+  - `SimRobot`: built-in topological simulator (a 9-room house). Copies the Nav2
+    behaviour that matters: the planner doesn't know about closed doors until it
+    reaches one; then it aborts. Within a session the blocked door is remembered (like
+    a costmap); across sessions only long-term memory carries it. Deterministic and
+    instant, so evaluation costs only LLM calls and grading uses exact ground truth.
+  - `Nav2Robot`: `NavigateToPose`/`NavigateThroughPoses` action clients and
+    `/amcl_pose`, with named locations from YAML. Perception is **simulated** from
+    configured object positions (stand-in for a detector). `avoid_doors` isn't
+    supported with Nav2 (no named doors); it's reported as ignored.
+- `Brain`: `AnthropicBrain` (Claude Opus 5.5 via the Messages API with tool use;
+  adaptive thinking, effort `medium`, strict tool schemas, prompt caching,
+  server-side refusal fallbacks), `KeywordBaselineBrain` (no LLM, a floor for
+  comparison), `ScriptedBrain` (tests).
+- `RobotAgent`: a manual tool-use loop per command. Retrieve top-k memories for the
+  command and put them in the first message → act until `finish` (or step limit) →
+  write the episode back to the bundle and re-index. `finish(success, answer)` asks
+  the model to report honestly; grading checks the report against the world.
+- `EpisodicMemory`: writes Mission Run / Task Attempt / Failure-Recovery Note /
+  Environment Observation / Operator Note concepts, each with its timestamp in the
+  text (so the agent can tell stale memories from fresh ones), and retrieves through
+  `VectorSearchBackend` filtered to this environment's `resource`.
+
+**Evaluation** (`okf_robotics_eval`, task file `okf_robotics_agent/data/tasks.yaml`):
+20 tasks in 5 categories: navigation, perception, failure handling (including
+impossible requests where the right answer is "no"), multi-step, and memory. Memory
+tasks seed prior experience (objects seen, doors found closed, operator notes, 40
+distractor memories for retrieval noise, one deliberately stale memory). Grading uses
+simulator ground truth (final location, visited order, places not visited, answer
+content), never the agent's own claim. Reported per memory mode: task success, per
+category, tasks that need memory vs not, **false success claims** (said it succeeded
+but didn't), nav failures, distance travelled, steps, and tokens.
+
+**Status (2026-11-11):**
+- Done and tested without ROS (pytest): simulator, agent loop, memory write/retrieve,
+  vector backend (Chroma + MiniLM), grader, eval runner. Retrieval spot-check with
+  MiniLM: the seeded memory is the top hit for all 7 memory tasks, including against
+  40 distractors.
+- Baseline (no LLM) eval: 30% (6/20) with memory ON and OFF, with 7 false success
+  claims. It's the floor to compare against.
+- **Not yet run:** the Claude eval (needs an API key; none in the dev environment),
+  and `Nav2Robot` / `agent_node` / `agent_sim.launch.py` in Gazebo (written against
+  the Nav2 action API and compile-checked only). The `tb3_sandbox.yaml` poses also
+  need checking in RViz.
+
 ## Implementation plan (phased)
 
 **Phase 0 — Validate (2–3 days)**
@@ -387,21 +465,27 @@ cross-links. This is a spec requirement, not a style choice.
       Workspace layout / per-package module sketches above).
 
 **Phase 2 — Build MVP (3–4 weeks)**
-- [x] Build `okf_robotics_core` — implemented and verified (manual check standing in
-      for `pytest`, which isn't installed in the dev sandbox; real `pytest` files
-      exist but haven't been run by `pytest` itself yet).
-- [x] Build `okf_robotics_capture` — implemented; everything except `capture_node.py`
-      itself is verified (no `rclpy` in this sandbox), including a full simulated
-      mission through the real trigger→encoder→buffer→writer pipeline.
+- [x] Build `okf_robotics_core` — implemented; `pytest` suite runs and passes.
+- [x] Build `okf_robotics_capture` — implemented; `capture_node.py` run against live
+      ROS traffic in Docker (2026-09-20), which found and fixed: executables not
+      installed under `lib/<pkg>` (added setup.cfg), a crash on Jazzy's one-character
+      str `DiagnosticStatus.level`, missing `resource` on Replan/Failure concepts,
+      case-sensitive grep, and anyio's pytest plugin breaking Jammy's pytest.
 - [x] Build `okf_robotics_mcp` — implemented; everything except `server.py` itself is
       verified (no `mcp` SDK in this sandbox). `server.py` guards against the SDK's
       v1→v2 `FastMCP`→`MCPServer` rename (July 2026) with a try/except import shim.
-- [ ] Wire up the Turtlebot + Gazebo demo scenario end-to-end in a real ROS2
-      environment; get a screen-recordable result. Requires an actual ROS2 install —
-      not yet done.
+- [x] Docker setup for building/testing per distro (`docker compose run humble|jazzy|lyrical`),
+      plus a `jazzy-sim` service with Gazebo + Nav2 TurtleBot3.
+- [x] Build `okf_robotics_agent` — LLM agent + RAG memory + simulator + eval set
+      (see LLM agent section).
+- [ ] Run the Claude eval (`okf_robotics_eval --memory both --trials 3`) and record
+      the numbers in the README.
+- [ ] Wire up the Turtlebot + Gazebo demo end-to-end (`agent_sim.launch.py` in the
+      `jazzy-sim` container); get a screen-recordable result.
 - [ ] Unit test suites (`pytest`) for `okf_robotics_capture` and `okf_robotics_mcp` —
-      deferred to the end per explicit instruction; `okf_robotics_core`'s test files
-      already exist.
+      deferred to the end per explicit instruction. `okf_robotics_core` and
+      `okf_robotics_agent` have full suites; capture has regression tests only; mcp
+      has none.
 
 **Phase 3 — Make it adoptable (1–2 weeks)**
 - README: 30-second problem statement + copy-pasteable quick start + rosbag-boundary

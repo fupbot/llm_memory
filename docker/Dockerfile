@@ -17,7 +17,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # `mcp` isn't in rosdep's default keys (see okf_robotics_mcp/requirements.txt), so
 # it's installed via pip rather than as a rosdep-resolved package.xml dependency.
 COPY okf_robotics_mcp/requirements.txt /tmp/mcp-requirements.txt
-RUN pip3 install --no-cache-dir -r /tmp/mcp-requirements.txt
+COPY okf_robotics_agent/requirements.txt /tmp/agent-requirements.txt
+RUN pip3 install --no-cache-dir -r /tmp/mcp-requirements.txt -r /tmp/agent-requirements.txt
+
+# Optional Gazebo + Nav2 TurtleBot3 simulation for okf_robotics_agent's
+# agent_sim.launch.py (only for the `*-sim` compose services; adds a few GB).
+ARG WITH_SIM=false
+RUN if [ "${WITH_SIM}" = "true" ]; then \
+      apt-get update && \
+      if [ "${ROS_DISTRO}" = "humble" ]; then \
+        apt-get install -y --no-install-recommends \
+          ros-humble-nav2-bringup ros-humble-turtlebot3-gazebo; \
+      else \
+        apt-get install -y --no-install-recommends \
+          ros-${ROS_DISTRO}-nav2-bringup ros-${ROS_DISTRO}-nav2-minimal-tb3-sim; \
+      fi && rm -rf /var/lib/apt/lists/*; \
+    fi
 
 COPY docker/entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
