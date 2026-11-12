@@ -1,0 +1,49 @@
+# Built-in simulated world for llm_memory_agent's offline evaluation.
+#
+# A topological map: named locations with metric coordinates (meters), connections
+# between them (optionally through a named door), and objects that can be seen at
+# a location. The robot's planner knows the map but NOT which doors are closed
+# right now. That's what makes memory useful: a door found closed in an earlier
+# session is still closed in this one, but the planner doesn't know that.
+name: house
+resource: sim://house
+start: dock
+
+locations:
+  dock:        {x: 0.0, y: 0.0,  description: "Charging dock at the west end of the hallway"}
+  hallway:     {x: 2.0, y: 0.0,  description: "Central hallway"}
+  kitchen:     {x: 2.0, y: 3.0,  description: "Kitchen with counter and fridge"}
+  dining:      {x: 5.0, y: 3.0,  description: "Dining room with the big table, open arch to the kitchen"}
+  living_room: {x: 5.0, y: 0.0,  description: "Living room with sofa and TV"}
+  office:      {x: 2.0, y: -3.0, description: "Home office with a desk and bookshelf"}
+  bedroom:     {x: 5.0, y: -3.0, description: "Bedroom"}
+  garage:      {x: -3.0, y: 0.0, description: "Garage, workbench along the wall"}
+  lab:         {x: 8.0, y: 0.0,  description: "Electronics lab at the east end of the house"}
+
+# [a, b] or [a, b, door_name]. Connections are bidirectional.
+connections:
+  - [dock, hallway]
+  - [dock, garage, garage_door]
+  - [hallway, kitchen, kitchen_door]
+  - [hallway, living_room, living_door]
+  - [hallway, office, office_door]
+  - [kitchen, dining]
+  - [dining, living_room]
+  - [dining, lab, lab_door_north]
+  - [living_room, lab, lab_door_west]
+  - [living_room, bedroom, bedroom_door]
+  - [office, bedroom, connecting_door]
+
+objects:
+  toolbox: garage
+  ladder: garage
+  red_mug: kitchen
+  fridge: kitchen
+  keys: dining
+  plant: living_room
+  laptop: office
+  charger_cable: bedroom
+  microscope: lab
+  oscilloscope: lab
+
+closed_doors: []

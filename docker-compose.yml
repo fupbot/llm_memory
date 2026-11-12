@@ -50,10 +50,10 @@ services:
       - lyrical_install:/workspace/install
       - lyrical_log:/workspace/log
 
-  # Jazzy + Gazebo Harmonic + Nav2 TurtleBot3 simulation, for okf_robotics_agent:
+  # Jazzy + Gazebo Harmonic + Nav2 TurtleBot3 simulation, for llm_memory_agent:
   #   docker compose run --rm jazzy-sim
   #   colcon build && source install/setup.bash
-  #   ros2 launch okf_robotics_agent agent_sim.launch.py
+  #   ros2 launch llm_memory_agent agent_sim.launch.py
   # Not yet run end to end: see requirements.md's LLM agent section.
   jazzy-sim:
     <<: *service_template
@@ -63,14 +63,21 @@ services:
       args:
         ROS_DISTRO: jazzy
         WITH_SIM: "true"
+    # LLM provider credentials/endpoints, passed through from the host. For Ollama
+    # running on the host, OLLAMA_HOST defaults to the host gateway below.
     environment:
       - ANTHROPIC_API_KEY
+      - OPENAI_API_KEY
+      - OPENAI_BASE_URL
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     volumes:
       - .:/workspace/src/robot_ai_memory
       - jazzy_sim_build:/workspace/build
       - jazzy_sim_install:/workspace/install
       - jazzy_sim_log:/workspace/log
-      - okf_bundle:/root/okf_robotics_bundle
+      - okf_bundle:/root/llm_memory_bundle
 
 volumes:
   jazzy_sim_build:

@@ -1,7 +1,8 @@
 # Requirements: OKF for Robotics — Persistent Session Memory for ROS2
 
-Working name: `okf_robotics` (placeholder — final package name TBD before publishing;
-repo is currently `robot_ai_memory`, reconcile naming before Phase 3).
+Package name: `llm_memory` (decided 2026-11-11; packages `llm_memory_core`,
+`llm_memory_capture`, `llm_memory_mcp`, `llm_memory_agent`). The repo is
+`robot_ai_memory`. "OKF" in this document refers to the file format the packages use.
 
 ## Summary
 
@@ -67,7 +68,7 @@ portable/interoperable implementation for robotics.
   - NOT for querying — the querying planner's own LLM does the reasoning; the MCP
     server just serves structured data.
 - Split: capture/encode deterministically, let the querying LLM reason.
-- The one package that calls an LLM is `okf_robotics_agent` (see LLM agent section),
+- The one package that calls an LLM is `llm_memory_agent` (see LLM agent section),
   an opt-in fourth package. Core, capture and MCP still need no API key.
 
 ## Safety & real-time behavior
@@ -121,11 +122,11 @@ Revisit if a future odd-year release turns out to matter more than Kilted did.
 There are two independent compatibility problems, not one:
 
 1. **Python version spread (3.10 → 3.14).** Affects all three packages, especially
-   `okf_robotics_core`/`okf_robotics_mcp` (which have zero `rclpy` dependency — see
+   `llm_memory_core`/`llm_memory_mcp` (which have zero `rclpy` dependency — see
    Package architecture). Target **Python 3.10 as the floor** (Humble's version);
    never use syntax/stdlib features newer than 3.10 in shared code (e.g. no
    `tomllib`, no 3.11+ exception groups) even though Lyrical ships 3.12–3.14.
-2. **`rclpy`/nav2 API drift.** Only affects `okf_robotics_capture`. Core `rclpy`
+2. **`rclpy`/nav2 API drift.** Only affects `llm_memory_capture`. Core `rclpy`
    pub/sub/executor API has been stable since Foxy, but Lyrical adds new
    `await`-based async `rclpy` semantics, and nav2's behavior-tree XML/action
    schemas shift release to release. Mitigations:
@@ -157,7 +158,7 @@ CI.
   low enough that grep-based search should be sufficient.
 - Explicitly deferred, not ruled out: FTS5/SQLite (or similar) can be added later as an
   optional accelerator if/when volume or query patterns demand it — keep the search
-  interface in `okf_robotics_core` abstracted so the backend can be swapped without
+  interface in `llm_memory_core` abstracted so the backend can be swapped without
   changing callers.
 - **Added 2026-11-11: vector (semantic) search** — `VectorSearchBackend`, behind the
   same interface, for the agent's retrieval-augmented memory (RAG). Revises the
@@ -170,21 +171,21 @@ CI.
     incrementally by content hash. Deleting it loses nothing.
   - Optional dependencies, imported lazily: Chroma (`chromadb`) as the vector DB, and
     all-MiniLM-L6-v2 embeddings via Chroma's bundled ONNX runtime (local, no API
-    key). `okf_robotics_core` itself still needs only PyYAML: a pure-Python
+    key). `llm_memory_core` itself still needs only PyYAML: a pure-Python
     in-memory store and a hashing embedder exist for tests/offline use.
 
 ## Package architecture (planned)
 
-1. **`okf_robotics_core`** (Python library) — OKF bundle read/write, schema validation
+1. **`llm_memory_core`** (Python library) — OKF bundle read/write, schema validation
    for robotics-specific concept types, grep-based search behind an abstracted
    interface (swappable backend later).
-2. **`okf_robotics_capture`** (ROS2 node, `rclpy`) — subscribes to task/planning/
+2. **`llm_memory_capture`** (ROS2 node, `rclpy`) — subscribes to task/planning/
    diagnostic topics, writes structured OKF concepts on meaningful events only, via a
    non-blocking buffered writer (see Safety section).
-3. **`okf_robotics_mcp`** (Python, MCP server) — exposes query/search over the OKF
+3. **`llm_memory_mcp`** (Python, MCP server) — exposes query/search over the OKF
    bundle so an LLM-based planner can ask "what happened last time in this
    environment."
-4. **`okf_robotics_agent`** (Python; ROS node optional) — added 2026-11-11. An LLM
+4. **`llm_memory_agent`** (Python; ROS node optional) — added 2026-11-11. An LLM
    agent (Claude) that takes natural-language commands, drives the robot through Nav2,
    and uses the bundle as retrieval-augmented long-term memory. Ships a built-in
    simulator and an evaluation set. See the LLM agent section.
@@ -198,27 +199,27 @@ dropped into one:
 
 ```
 robot_ai_memory/
-  okf_robotics_core/
-  okf_robotics_capture/
-  okf_robotics_mcp/
-  okf_robotics_agent/
+  llm_memory_core/
+  llm_memory_capture/
+  llm_memory_mcp/
+  llm_memory_agent/
   requirements.md
   README.md
   LICENSE
 ```
 
 All three are `ament_python` packages (colcon-buildable, each with its own
-`package.xml`). `okf_robotics_core` declares **no `rclpy` dependency** — it's pure
+`package.xml`). `llm_memory_core` declares **no `rclpy` dependency** — it's pure
 Python + PyYAML — so it stays independently pip-installable/testable, and
-`okf_robotics_mcp` doesn't need a sourced ROS environment just to serve queries from an
+`llm_memory_mcp` doesn't need a sourced ROS environment just to serve queries from an
 existing bundle.
 
-### `okf_robotics_core` — pure Python library, zero ROS dependency
+### `llm_memory_core` — pure Python library, zero ROS dependency
 
 ```
-okf_robotics_core/
+llm_memory_core/
   package.xml, setup.py
-  okf_robotics_core/
+  llm_memory_core/
     bundle.py            # Bundle(root_path): read/write concepts, walk tree, append_log()
     concepts/
       base.py             # Concept: type/title/description/resource/tags/sources/
@@ -243,14 +244,14 @@ it doesn't know what a "task" or "topic" is, only what a `Concept` and a `Bundle
 This is what makes it swappable/reusable outside ROS later if the OKF-robotics idea
 generalizes.
 
-### `okf_robotics_capture` — ROS2 node (`rclpy`), depends on `okf_robotics_core`
+### `llm_memory_capture` — ROS2 node (`rclpy`), depends on `llm_memory_core`
 
 ```
-okf_robotics_capture/
+llm_memory_capture/
   package.xml, setup.py
   launch/capture.launch.py
   config/capture_params.yaml   # topics to watch, per-trigger config
-  okf_robotics_capture/
+  llm_memory_capture/
     capture_node.py             # rclpy Node: subscribes to configured topics
     triggers/
       base.py                    # EventTrigger: given a msg, decide if this is an
@@ -263,23 +264,23 @@ okf_robotics_capture/
     buffer.py                     # HotMemoryBuffer: bounded in-memory queue, put()
                                    #   never blocks caller; spills to disk if full
     writer.py                      # flush-thread-only: drains buffer, calls
-                                    #   okf_robotics_core.Bundle to write concepts
+                                    #   llm_memory_core.Bundle to write concepts
   test/
 ```
 
 Responsibility: the only package that touches ROS topics. Message arrives → trigger
 decides "is this an event boundary" → encoder builds a `Concept` deterministically →
 `buffer.put()` (non-blocking) → a separate flush timer/thread drains the buffer and
-calls `writer` to persist via `okf_robotics_core`, off the subscription callback path
+calls `writer` to persist via `llm_memory_core`, off the subscription callback path
 entirely. This is the concrete implementation of the buffered-non-blocking design
 already decided in the Safety section, and mirrors `hermes-okf`'s hot/cold split.
 
-### `okf_robotics_mcp` — MCP server, depends on `okf_robotics_core`
+### `llm_memory_mcp` — MCP server, depends on `llm_memory_core`
 
 ```
-okf_robotics_mcp/
+llm_memory_mcp/
   package.xml, setup.py
-  okf_robotics_mcp/
+  llm_memory_mcp/
     server.py                # MCP stdio server entrypoint, registers tools
     tools/
       search_bundle.py         # generic grep-search passthrough
@@ -289,7 +290,7 @@ okf_robotics_mcp/
                                    #   find every Mission Run/Task Attempt/Failure Note
                                    #   that references it — the demo's core query
       recent.py                    # reads log.md entries, most-recent-first
-    graph.py                  # backlink index built over okf_robotics_core.Bundle
+    graph.py                  # backlink index built over llm_memory_core.Bundle
   test/
 ```
 
@@ -308,11 +309,11 @@ what to do with it, per the Encoding approach split already decided.
    `replan_encoder` builds a `Replan Event`, bundle-relative-linked back to the Task
    Attempt.
 3. Mission ends → `mission.md` frontmatter flips `status: draft` → `status: stable`.
-4. Next session: the *querying* LLM replanner calls `okf_robotics_mcp`'s
+4. Next session: the *querying* LLM replanner calls `llm_memory_mcp`'s
    `environment_history(resource="map://gazebo_house_world")` → `graph.py` finds
    `environments/gazebo_house_world.md`, follows backlinks, gathers linked Task
    Attempts/Replan Events/Failure Notes → returns them to the calling LLM, which
-   reasons over the history and adjusts its plan. `okf_robotics_mcp` never itself
+   reasons over the history and adjusts its plan. `llm_memory_mcp` never itself
    invokes an LLM.
 
 ## Schema design notes
@@ -333,7 +334,7 @@ central schema registry, by design.
 | `type` (free-form, required) | New types: `Mission Run`, `Task Attempt`, `Replan Event`, `Failure/Recovery Note`, `Environment Observation`, `Param/Planner Change` | Spec forbids rejecting unknown types — no registry needed |
 | `resource` (URI to the real asset) | e.g. `map://gazebo_house_world`, `topic://nav2/behavior_tree` | Anchors a concept doc to an actual ROS entity |
 | `sources` (provenance list) | rosbag/log references — see rosbag boundary section above | Format-agnostic by construction |
-| `generated: {by, at}` | `by: okf_robotics_capture/<version>` for templated writes; `by: process:okf-narrator-llm` for LLM prose | Matches the deterministic-capture/LLM-opt-in split |
+| `generated: {by, at}` | `by: llm_memory_capture/<version>` for templated writes; `by: process:okf-narrator-llm` for LLM prose | Matches the deterministic-capture/LLM-opt-in split |
 | `verified: [{by, at}]` | Human operator annotates a `Failure Note` afterward → `by: human:<id>` | Promotes trust tier (unverified → machine-confirmed → human-reviewed); signal for the querying LLM to weight |
 | `status: draft/stable/deprecated` | `draft` while a mission is in progress, `stable` once closed | Doubles as a crash-recovery signal — an unflushed/interrupted mission simply stays `draft` |
 | `stale_after` | Environment Observations expire (e.g. "corridor was clear" shouldn't be trusted indefinitely) | Cheap staleness filter without embeddings |
@@ -378,7 +379,7 @@ Mirrors `okf-agent-memory`'s domain-folder pattern (`project/`, `architecture/`,
 
 ### Implementation constraint from the conformance rules
 
-`okf_robotics_core`'s validator must be **permissive by construction** — it must not
+`llm_memory_core`'s validator must be **permissive by construction** — it must not
 reject a bundle for unknown `type` values, missing optional frontmatter, or broken
 cross-links. This is a spec requirement, not a style choice.
 
@@ -390,7 +391,7 @@ cross-links. This is a spec requirement, not a style choice.
 - Sim-first, but capture-node design (see Safety) should not preclude later running the
   same package against a real Turtlebot or similar platform.
 
-## LLM agent (`okf_robotics_agent`)
+## LLM agent (`llm_memory_agent`)
 
 Added 2026-11-11. This is the demo scenario made concrete: an LLM controls a ROS 2
 robot from natural-language commands, its memory is the OKF bundle retrieved through a
@@ -425,7 +426,7 @@ tested on their own):
   text (so the agent can tell stale memories from fresh ones), and retrieves through
   `VectorSearchBackend` filtered to this environment's `resource`.
 
-**Evaluation** (`okf_robotics_eval`, task file `okf_robotics_agent/data/tasks.yaml`):
+**Evaluation** (`llm_memory_eval`, task file `llm_memory_agent/data/tasks.yaml`):
 20 tasks in 5 categories: navigation, perception, failure handling (including
 impossible requests where the right answer is "no"), multi-step, and memory. Memory
 tasks seed prior experience (objects seen, doors found closed, operator notes, 40
@@ -465,41 +466,54 @@ but didn't), nav failures, distance travelled, steps, and tokens.
       Workspace layout / per-package module sketches above).
 
 **Phase 2 — Build MVP (3–4 weeks)**
-- [x] Build `okf_robotics_core` — implemented; `pytest` suite runs and passes.
-- [x] Build `okf_robotics_capture` — implemented; `capture_node.py` run against live
+- [x] Build `llm_memory_core` — implemented; `pytest` suite runs and passes.
+- [x] Build `llm_memory_capture` — implemented; `capture_node.py` run against live
       ROS traffic in Docker (2026-09-20), which found and fixed: executables not
       installed under `lib/<pkg>` (added setup.cfg), a crash on Jazzy's one-character
       str `DiagnosticStatus.level`, missing `resource` on Replan/Failure concepts,
       case-sensitive grep, and anyio's pytest plugin breaking Jammy's pytest.
-- [x] Build `okf_robotics_mcp` — implemented; everything except `server.py` itself is
+- [x] Build `llm_memory_mcp` — implemented; everything except `server.py` itself is
       verified (no `mcp` SDK in this sandbox). `server.py` guards against the SDK's
       v1→v2 `FastMCP`→`MCPServer` rename (July 2026) with a try/except import shim.
 - [x] Docker setup for building/testing per distro (`docker compose run humble|jazzy|lyrical`),
       plus a `jazzy-sim` service with Gazebo + Nav2 TurtleBot3.
-- [x] Build `okf_robotics_agent` — LLM agent + RAG memory + simulator + eval set
+- [x] Build `llm_memory_agent` — LLM agent + RAG memory + simulator + eval set
       (see LLM agent section).
-- [ ] Run the Claude eval (`okf_robotics_eval --memory both --trials 3`) and record
+- [x] LLM provider choice for the agent (2026-11-11): Anthropic (Claude), a local
+      Ollama model, or any OpenAI-compatible cloud API (`--provider` /
+      `--brain` / `provider:=`), via `OpenAICompatBrain` in `brain.py`. Verified
+      with a local Ollama model in the built-in simulator.
+- [x] Docker fixes found while testing (2026-11-11): rosdep dependencies installed at
+      image build (the entrypoint failed on apt lists removed from the image), pip
+      `--ignore-installed` for Debian-installed packages (PyYAML) with numpy < 2,
+      `COLCON_IGNORE` for host virtualenvs in the mounted repo, and
+      `extras_require={"test": ["pytest"]}` instead of `tests_require` (dropped by
+      Lyrical's setuptools, which made colcon fall back to unittest and find no
+      tests). Full test procedure in TESTING.md.
+- [ ] Run the Claude eval (`llm_memory_eval --memory both --trials 3`) and record
       the numbers in the README.
 - [ ] Wire up the Turtlebot + Gazebo demo end-to-end (`agent_sim.launch.py` in the
       `jazzy-sim` container); get a screen-recordable result.
-- [ ] Unit test suites (`pytest`) for `okf_robotics_capture` and `okf_robotics_mcp` —
-      deferred to the end per explicit instruction. `okf_robotics_core` and
-      `okf_robotics_agent` have full suites; capture has regression tests only; mcp
+- [ ] Unit test suites (`pytest`) for `llm_memory_capture` and `llm_memory_mcp` —
+      deferred to the end per explicit instruction. `llm_memory_core` and
+      `llm_memory_agent` have full suites; capture has regression tests only; mcp
       has none.
 
 **Phase 3 — Make it adoptable (1–2 weeks)**
 - README: 30-second problem statement + copy-pasteable quick start + rosbag-boundary
   explanation + `ai-memory` attribution.
 - `ros2 launch` example, not just library usage.
-- Apache-2.0 LICENSE (done), CONTRIBUTING.md, issue templates, CHANGELOG.
-- Working `package.xml`, buildable via `colcon`.
-- GitHub Actions CI: matrix across Humble + Jazzy + Lyrical using `ros:<distro>-ros-base`
-  images via `ros-tooling/setup-ros` + `ros-tooling/action-ros-ci`, `colcon build`
-  + `colcon test` per distro (see ROS2 distro compatibility section) — ROS users check
-  for this before trusting a package.
+- [x] Apache-2.0 LICENSE, CONTRIBUTING.md (with release checklist), CHANGELOG.md and
+  per-package CHANGELOG.rst (2026-11-11). Issue templates still to do.
+- [x] Working `package.xml`, buildable via `colcon` — verified on Humble, Jazzy and
+  Lyrical in Docker (2026-11-11); repository/bugtracker URLs added.
+- [x] GitHub Actions CI (2026-11-11, `.github/workflows/ci.yml`): pure-Python pytest on
+  Python 3.10 + 3.12, and `colcon build` + `colcon test` on Humble + Jazzy + Lyrical.
+  Uses the repo's own `docker compose` images instead of `ros-tooling/action-ros-ci`,
+  so CI runs exactly what local testing (TESTING.md step 4) runs.
 - Register on ROS package index once stable.
-- Resolve final package name (currently placeholder `okf_robotics`; repo is
-  `robot_ai_memory`).
+- [x] Resolve final package name: `llm_memory` (2026-11-11; was the placeholder
+  `okf_robotics`).
 
 **Phase 4 — Share it (in this order)**
 1. ROS Discourse (discourse.ros.org) — post once a working demo exists.
@@ -525,8 +539,8 @@ rather than an implementation detail of one agent stack.
 - [x] ROS2 distro compatibility strategy — resolved: officially support Humble + Jazzy
       + Lyrical (LTS releases only, Kilted excluded as near-EOL non-LTS); Python 3.10
       floor; CI matrix proves it. See ROS2 distro compatibility section.
-- [ ] Final package name (`okf_robotics` vs. reconciling with repo name
-      `robot_ai_memory`).
+- [x] Final package name — resolved 2026-11-11: `llm_memory` (`llm_memory_core`,
+      `_capture`, `_mcp`, `_agent`); repo stays `robot_ai_memory`.
 - [ ] Concrete buffered-writer parameters (queue depth, disk-spill threshold,
       backpressure signaling) — revisit once real-hardware testing is in scope.
 - [ ] Finalize concept-type field lists per type (e.g. does `Task Attempt` need a

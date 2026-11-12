@@ -78,5 +78,9 @@ __pycache__/
 install/
 log/
 
-# okf_robotics_agent eval output
+# llm_memory_agent eval output
 eval_results/
+
+# Python virtualenvs (also marked COLCON_IGNORE by docker/entrypoint.sh)
+venv/
+.venv/
