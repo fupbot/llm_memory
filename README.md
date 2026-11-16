@@ -1,4 +1,4 @@
-# robot_ai_memory
+# ROS Package: llm_memory
 
 [![CI](https://github.com/fupbot/robot_ai_memory/actions/workflows/ci.yml/badge.svg)](https://github.com/fupbot/robot_ai_memory/actions/workflows/ci.yml)
 
