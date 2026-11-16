@@ -1,0 +1,43 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>llm_memory_agent</name>
+  <version>0.1.0</version>
+  <description>
+    LLM agent that controls a ROS 2 robot from natural-language commands through
+    Nav2, using Claude, a local Ollama model, or any OpenAI-compatible API. Long-term
+    memory is retrieval-augmented: episodes are written to an OKF bundle and retrieved
+    through a vector index (Chroma). Includes a built-in simulator and an evaluation
+    set that run without ROS.
+  </description>
+  <maintainer email="ugaldepereira@gmail.com">Ugalde Pereira</maintainer>
+  <license>Apache-2.0</license>
+  <url type="website">https://github.com/fupbot/robot_ai_memory</url>
+  <url type="repository">https://github.com/fupbot/robot_ai_memory</url>
+  <url type="bugtracker">https://github.com/fupbot/robot_ai_memory/issues</url>
+
+  <depend>llm_memory_core</depend>
+  <depend>python3-yaml</depend>
+
+  <!-- Only agent_node.py and robot/nav2.py import these; the agent, memory, simulator
+       and evaluation work without ROS. -->
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>ament_index_python</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
+  <exec_depend>nav2_msgs</exec_depend>
+  <exec_depend>ros2launch</exec_depend>
+  <exec_depend>launch_ros</exec_depend>
+  <!-- agent_sim.launch.py's simulation (TurtleBot3 in Gazebo with Nav2) -->
+  <exec_depend>nav2_bringup</exec_depend>
+
+  <!-- anthropic and chromadb (PyPI) aren't in rosdep's default keys: install with
+       `pip install -r requirements.txt`. -->
+
+  <test_depend>python3-pytest</test_depend>
+
+  <export>
+    <build_type>ament_python</build_type>
+  </export>
+</package>

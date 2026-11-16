@@ -1,0 +1,59 @@
+name: CI
+
+on:
+  push:
+    branches: [main, dev]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # Fast check of the pure-Python packages, no ROS. Python 3.10 is the floor
+  # (Humble); 3.12 matches Jazzy.
+  python:
+    name: pytest (Python ${{ matrix.python }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.10", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: Install
+        run: |
+          pip install -e llm_memory_core -e llm_memory_agent -e llm_memory_mcp \
+            -r llm_memory_agent/requirements.txt -r llm_memory_mcp/requirements.txt pytest
+      - name: Test
+        run: |
+          PYTHONPATH=llm_memory_core:llm_memory_capture:llm_memory_agent \
+            pytest -v llm_memory_core llm_memory_capture llm_memory_agent llm_memory_mcp
+
+  # Full ROS 2 build and test per supported distro, using the same Docker image and
+  # commands as local testing (TESTING.md step 4).
+  ros:
+    name: colcon (${{ matrix.distro }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [humble, jazzy, lyrical]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker compose build ${{ matrix.distro }}
+      # colcon test exits 0 when tests fail (it only fails on errors running them);
+      # colcon test-result is what exits non-zero on test failures.
+      - name: colcon build and test
+        run: |
+          docker compose run --rm -T ${{ matrix.distro }} bash -c \
+            "colcon build && colcon test && colcon test-result --verbose"

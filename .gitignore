@@ -67,3 +67,20 @@ vcpkg_installed/
 # test output & cache
 Testing/
 .cache/
+
+# Python
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# colcon workspace artifacts
+install/
+log/
+
+# llm_memory_agent eval output
+eval_results/
+
+# Python virtualenvs (also marked COLCON_IGNORE by docker/entrypoint.sh)
+venv/
+.venv/

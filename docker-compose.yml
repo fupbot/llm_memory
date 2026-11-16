@@ -1,0 +1,95 @@
+x-service-template: &service_template
+  build:
+    context: .
+    dockerfile: docker/Dockerfile
+  working_dir: /workspace
+  stdin_open: true
+  tty: true
+  command: bash
+
+services:
+  # Matches the three LTS distros in requirements.md's ROS2 distro compatibility
+  # section (Kilted is intentionally excluded). Each service keeps its own build
+  # volumes so colcon artifacts from one distro never leak into another.
+  humble:
+    <<: *service_template
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        ROS_DISTRO: humble
+    volumes:
+      - .:/workspace/src/robot_ai_memory
+      - humble_build:/workspace/build
+      - humble_install:/workspace/install
+      - humble_log:/workspace/log
+
+  jazzy:
+    <<: *service_template
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+    volumes:
+      - .:/workspace/src/robot_ai_memory
+      - jazzy_build:/workspace/build
+      - jazzy_install:/workspace/install
+      - jazzy_log:/workspace/log
+
+  lyrical:
+    <<: *service_template
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        ROS_DISTRO: lyrical
+    volumes:
+      - .:/workspace/src/robot_ai_memory
+      - lyrical_build:/workspace/build
+      - lyrical_install:/workspace/install
+      - lyrical_log:/workspace/log
+
+  # Jazzy + Gazebo Harmonic + Nav2 TurtleBot3 simulation, for llm_memory_agent:
+  #   docker compose run --rm jazzy-sim
+  #   colcon build && source install/setup.bash
+  #   ros2 launch llm_memory_agent agent_sim.launch.py
+  # Not yet run end to end: see requirements.md's LLM agent section.
+  jazzy-sim:
+    <<: *service_template
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      args:
+        ROS_DISTRO: jazzy
+        WITH_SIM: "true"
+    # LLM provider credentials/endpoints, passed through from the host. For Ollama
+    # running on the host, OLLAMA_HOST defaults to the host gateway below.
+    environment:
+      - ANTHROPIC_API_KEY
+      - OPENAI_API_KEY
+      - OPENAI_BASE_URL
+      - OLLAMA_HOST=${OLLAMA_HOST:-http://host.docker.internal:11434}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - .:/workspace/src/robot_ai_memory
+      - jazzy_sim_build:/workspace/build
+      - jazzy_sim_install:/workspace/install
+      - jazzy_sim_log:/workspace/log
+      - okf_bundle:/root/llm_memory_bundle
+
+volumes:
+  jazzy_sim_build:
+  jazzy_sim_install:
+  jazzy_sim_log:
+  okf_bundle:
+  humble_build:
+  humble_install:
+  humble_log:
+  jazzy_build:
+  jazzy_install:
+  jazzy_log:
+  lyrical_build:
+  lyrical_install:
+  lyrical_log:
